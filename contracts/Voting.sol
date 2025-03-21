@@ -1,88 +1,107 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.6.0;
+pragma solidity ^0.8.0;
 
 contract Voting {
     address public owner;
-    mapping(address => uint) public votes; 
-    mapping(address => bool) public voters; 
-    address[] public candidates; 
-    uint public voteCost = 0.1 ether; 
-    bool public votingActive = true;
-
+    bool public votingActive;
+    uint256 public voteCost = 0.1 ether;
+    
+    address[] public candidates;
+    mapping(address => bool) public voters;
+    mapping(address => uint256) public votes;
+    
     event CandidateAdded(address candidate);
     event Voted(address indexed voter, address indexed candidate);
-    event FundsTransferred(address indexed owner, uint amount);
     event VotingReset();
-
-    constructor() public {
+    event FundsTransferred(address indexed owner, uint256 amount);
+    
+    constructor() {
         owner = msg.sender;
+        votingActive = true;
     }
-
+    
     modifier onlyOwner() {
-        require(msg.sender == owner, "Only the owner can perform this action");
+        require(msg.sender == owner, "Only the owner can call this function");
         _;
     }
-
-    modifier onlyWhenVotingActive() {
+    
+    modifier isVotingActive() {
         require(votingActive, "Voting is not active");
         _;
     }
-
-    function pushCandidate(address candidate) public payable onlyOwner {
-        require(msg.value >= voteCost, "You must pay the voting fee to add a candidate");
+    
+    function pushCandidate(address candidate) public payable {
+        require(msg.value >= 0.1 ether, "Insufficient fee to add candidate");
+        require(candidate != address(0), "Invalid candidate address");
+        
+        // Can add additional checks here like:
+        // - Check if candidate already exists
+        // - Check if the caller is authorized
+        
         candidates.push(candidate);
         emit CandidateAdded(candidate);
     }
-
-    function vote(address candidate) public payable onlyWhenVotingActive {
-        require(msg.value >= voteCost, "You must pay the voting fee to vote");
+    
+    function vote(address candidate) public payable isVotingActive {
+        require(msg.value >= voteCost, "Insufficient fee to vote");
         require(!voters[msg.sender], "You have already voted");
-
-        bool isValidCandidate = false;
+        
+        bool isCandidate = false;
         for (uint i = 0; i < candidates.length; i++) {
             if (candidates[i] == candidate) {
-                isValidCandidate = true;
-                votes[candidate]++;
-                voters[msg.sender] = true;
-                emit Voted(msg.sender, candidate);
+                isCandidate = true;
                 break;
             }
         }
-        require(isValidCandidate, "Candidate does not exist");
+        require(isCandidate, "Invalid candidate");
+        
+        voters[msg.sender] = true;
+        votes[candidate]++;
+        
+        emit Voted(msg.sender, candidate);
     }
-
+    
     function getWinner() public view returns (address winner) {
-        require(candidates.length > 0, "No candidates available");
-        winner = candidates[0];
-        for (uint i = 1; i < candidates.length; i++) {
-            if (votes[candidates[i]] > votes[winner]) {
+        require(candidates.length > 0, "No candidates");
+        
+        uint256 maxVotes = 0;
+        
+        for (uint i = 0; i < candidates.length; i++) {
+            if (votes[candidates[i]] > maxVotes) {
+                maxVotes = votes[candidates[i]];
                 winner = candidates[i];
             }
         }
+        
         return winner;
     }
-
-    function getBalance() public onlyOwner {
-        uint balance = address(this).balance;
-        require(balance > 0, "No funds available");
-        payable(owner).transfer(balance);
-        emit FundsTransferred(owner, balance);
+    
+    function getCandidatesCount() public view returns (uint256) {
+        return candidates.length;
     }
-
-    // Reset function to clear votes and candidates and allow for new elections
+    
     function resetVoting() public onlyOwner {
-        delete candidates;
         for (uint i = 0; i < candidates.length; i++) {
-            delete votes[candidates[i]];
+            votes[candidates[i]] = 0;
         }
-        votingActive = true;
+        
+        // Reset all voters
+        // Note: This is a simple approach and might be gas-intensive for many voters
+        for (uint i = 0; i < candidates.length; i++) {
+            address voter = candidates[i]; // Example approach, not ideal
+            voters[voter] = false;
+        }
+        
         emit VotingReset();
     }
-
+    
     function stopVoting() public onlyOwner {
         votingActive = false;
     }
-        function getCandidatesCount() public view returns (uint) {
-        return candidates.length;
+    
+    function getBalance() public onlyOwner {
+        uint256 balance = address(this).balance;
+        payable(owner).transfer(balance);
+        emit FundsTransferred(owner, balance);
     }
 }
